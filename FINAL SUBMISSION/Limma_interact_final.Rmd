@@ -1,0 +1,903 @@
+---
+title: "INTERACT"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Using GEOquery to load in phenodata associated with count data file
+```{r}
+library(GEOquery)
+gse = getGEO("GSE124161") #unfortunately the data is not included in this file, so we need to load that in separately.
+
+```
+
+### Loading in dataset previously downloaded from NCBI-GEO directly from stored computer location.
+```{r}
+GSE124161_readcount <- read.delim("~/NYU/BIGY-7633 Transcriptomics/project/GSE124161_readcount.txt", row.names=1)
+```
+
+### readcount file needs to have the metadata associated with the sample ID names
+### since they re-ordered the count data, it is different than their metadata file, we need to re-create the metadata to fit the revised order that they utilized in the count data file.
+
+### Retreiving metadata from series_matrix file, int the order of the count data file
+
+```{r}
+pheno_data <-gse[["GSE124161_series_matrix.txt.gz"]]@phenoData@data[["title"]]
+D0 <-pheno_data[1:3]
+W1T<-pheno_data[c(4,6,8)]
+W1C<-pheno_data[c(5,7,9)]
+W2T<-pheno_data[c(10,12,14)]
+W2C<-pheno_data[c(11,13,15)]
+W3T<-pheno_data[c(16,18,20)]
+W3C<-pheno_data[c(17,19,21)]
+W4T<-pheno_data[c(22,24,26)]
+W4C<-pheno_data[c(23,25,27)]
+W5T<-pheno_data[c(28,30,32)]
+W5C<-pheno_data[c(29,31,33)]
+W6T<-pheno_data[c(34,36,38)]
+W6C<-pheno_data[c(35,37,39)]
+W8T<-pheno_data[c(40,42,44)]
+W8C<-pheno_data[c(41,43,45)]
+count_pheno <-c(D0,W1T, W1C, W2T, W2C, W3T, W3C, W4T, W4C, W5T, W5C, W6T, W6C, W8T, W8C)
+count_pheno
+```
+
+### Capturing count data file column names to match the metadata against sample names and treatment levels to be created in a dataframe below
+
+```{r}
+count_cols <- names(GSE124161_readcount)#get the column names from the read count data
+count_cols
+```
+
+### Constructing a data frame for later use with sample metadata
+
+```{r}
+
+#this is matching the original count column names to the phenotype names I ordered in prior R code
+pheno_df<-cbind(count_pheno,count_cols)
+pheno_df<-as.data.frame(pheno_df)
+```
+
+### Continue to build the metadata dataframe object
+```{r}
+#I may need a factor separating the count data by week, so I am creating the information in an ordered fashion, to integrate into the data frame as a column.
+day0 <-rep("D0", each = 3)
+wknames <- c("W1", "W2", "W3", "W4", "W5", "W6", "W8")
+weeks1_8 <-rep(wknames, each = 6)
+
+
+all_weeks <-c(day0,weeks1_8)
+
+pheno_df$weeks <-all_weeks
+
+
+```
+
+### Keep building the dataframe, adding columns of metadata as necessary.
+```{r}
+#adding another column to designate the treatment and control groups associated with the columns in the count file
+group0 <-c("Day0","Day0","Day0")
+expnames <- c("EGCG", "Placebo")
+Group1_8 <-rep(expnames, each =3, times =7)
+
+groups<-append(group0, Group1_8)
+
+pheno_df$groups <-groups
+
+```
+
+### Keep building the dataframe, adding columns of metadata as necessary.
+```{r}
+#adding uninjured-injured to separate out the groups, in case we want to use this comparison.
+uninjured <-c("uninjured","uninjured", "uninjured")
+injured <-rep("injured", each =1, times =42)
+
+treatment <-append(uninjured, injured)
+pheno_df$treatment <-treatment #adding column "status" to pheno_df
+```
+
+### Keep building the dataframe, adding columns of metadata as necessary.
+```{r}
+#adding "none", "zonal" and "direct" to pheno table to designate application type
+none<- rep("none", each = 1, times =3)
+zonal <-rep("zonal", each =1, times = 12)
+direct <-rep("direct", each = 1, times = 30)
+
+appl <- append(none, zonal)
+application <-append(appl,direct)
+
+
+pheno_df$application <-application #adding column "application" to pheno_df
+
+```
+
+### Keep building the dataframe, adding columns of metadata as necessary
+```{r}
+#adding "D0", "Zw1", "Zw2" and "Dw1", "Dw2", "Dw3", "Dw4", "Dw6" to pheno table to designate application type by week
+non<- rep("W0", each = 1, times =3)
+zw1 <-rep("Zw1", each =1, times = 6)
+zw2 <-rep("Zw2", each =1, times = 6)
+dw1 <-rep("Dw1", each = 1, times = 6)
+dw2 <-rep("Dw2", each = 1, times = 6)
+dw3 <-rep("Dw3", each = 1, times = 6)
+dw4 <-rep("Dw4", each = 1, times = 6)
+dw6 <-rep("Dw6", each = 1, times = 6)
+
+zon1 <- append(non, zw1)
+zon2 <- append(zon1, zw2)
+dir1 <- append(zon2, dw1)
+dir2 <- append(dir1, dw2)
+dir3 <- append(dir2, dw3)
+dir4 <- append(dir3, dw4)
+dir6 <- append(dir4, dw6)
+
+pheno_df$appl_by_wk <-dir6 #adding column "application" to pheno_df
+
+```
+
+### Rename columns in pheno_df for clarity
+
+```{r}
+#renaming column names in data frame for clarity
+colnames(pheno_df) <-c("samples", "count_colnames", "week", "treatments", "status", "application", "appl_by_wk")
+pheno_df
+```
+
+### Quality Control
+
+```{r}
+
+sums <- colSums(GSE124161_readcount) 
+
+#GT51_2_C, which is one of the week 2 control samples, is double the depth of the entire experiment 43,971,422 (divided in half it's = 21,985,711), so yes it is double. I wonder if they found this, and removed it. One way is to check the week 2 heat maps to see if this sample has an extreme up regulation. It's there, so they did not exclude it, but nothing shows as extremely up-regulated???? What is going on here?? 
+sums
+barplot(sums,
+        main = "Counts Across Samples",
+        ylab = "Counts",
+        cex.names = 0.5,
+        las = 3)
+```
+
+### Some Quick Analysis: Violin Plot
+
+```{r}
+library(tidyverse)
+library(reshape2)
+
+datamat = apply(GSE124161_readcount, 2, as.integer)
+data= as.data.frame(datamat)
+rownames(data) = rownames(GSE124161_readcount)
+
+data_wnames = data #data with gene names
+data_wnames$gene = rownames(data) #creating a column $gene in the data stored in variable data_wnames, using the rownames from the data variable
+data_melt = melt(data_wnames) #melting the data into long form (see in environment) This is huge, for every gene in the dataset 48,162 X 45 samples = 2,167,290 entries
+
+ggplot(data_melt) +
+  geom_violin(mapping = aes(x=variable, y=log2(value +1))) + theme(axis.text.x = element_text(face="bold", color="#993333", 
+                           size=8, angle=90)) + labs(title="Violin Plot: Gene Counts Before Removing Low Count Genes")
+
+# this violin plot gives you an idea on how the data is distributed. You would expected all of them to look the same and the samples should not vastly deviate from each other over the entire data set. So we are looking to see that all the samples and replicates do not have big differences
+
+# in this example we want the variable as the x axis (the variable is the names in the melted graph, that will group/condense according to the name, and will be the samples in the graph, we should have 45 samples plotted)
+
+# the (value+1) is added because if you have a value of 0, and you take the log of 0, you have a problem - it's undefined, so if you add 1 to all of the values, then a log of 1 will = 0 and everything will be scaled identically with 1 extra count added across the board, so we can get the log(1) = 0
+
+# and we can see this in the violin plot as the thick base in the violin plot is the genes that actually have 0 counts.
+
+```
+
+### Trim the dataset from low count genes
+Removing low expressed genes. When you do the differential expression you do not want to run statistics on the background noise.Look at the data in the following histogram to determine how many genes are low expressed. 6,000 of the genes (look at the histogram below) are not going to give you results, they are too low, so you should trim the dataset. 
+```{r}
+genesum = rowSums(data) # we are asking R to calculate the sums of the counts in each row(gene) across all 45 samples, and we will graph the result as a histogram below. 
+hist(log2(genesum+1), ylim = c(0,10000), xlim = c(0,30), breaks = 25) #this generates the histogram below, and from looking at the histogram, we can see that 6K genes have a near-zero expression level, really low values, across the entire dataset.
+sum(genesum ==0) #here we are asking exactly how many genes are equal to 0, which we get 4467 out of 48,162 total genes, this is not bad, it is expected, not all genes are going to be expressed in an RNAseq experiment. 
+sum(genesum <2) # and 6518 genes have a count across the 45 samples when totaled up are less than 2, 
+
+#For this filtering we wanted to keep the subset of data where the genesum was over 30
+#genesum = 45 + 1 = 46 log2(46) = 5.52 = ~5.5, everything below 5 on the above graph, so we want to keep everything with a genesum count of 45 and above
+
+data_filt = subset(data, genesum >45)
+genesum = rowSums(data)
+```
+### Take a look at the histogram again.
+Is this the presence of 2 means forming in the data?
+
+```{r}
+genesum_filt = rowSums(data_filt)
+hist(log2(genesum_filt+1), ylim = c(0,4000), xlim = c(0,30), breaks = 25)
+dim(data_filt)
+```
+
+### Load limma and edgeR
+
+```{r}
+library(limma)
+library(edgeR)
+```
+
+### Create a design matrix for lm.
+
+First we create the levels that we are potentially interested in. Some of these we may not use, but we have them in case we want to make a different comparison.
+```{r}
+week_mm <- factor(pheno_df$week, levels = c("D0", "W1", "W2", "W3", "W4", "W5", "W6", "W8"))
+treatments_mm <- factor(pheno_df$treatments, levels = c("Day0", "Placebo", "EGCG"))
+status_mm <-factor(pheno_df$status, levels = c("uninjured", "injured"))
+application_mm <-factor(pheno_df$application, levels = c("none", "zonal", "direct"))
+appl_by_wk_mm <-factor(pheno_df$appl_by_wk, levels = c("W0", "Zw1", "Zw2", "Dw1", "Dw2", "Dw3", "Dw4", "Dw6"))
+```
+
+This model matrix defines all of the things that you are interested in comparing
+It creates a matrix that defines the various experimental categories of the samples in your experiment that you want to compare.
+We will use the week_mm and treatments_mm as we are interested in comparing treatments across the weeks.
+```{r}
+weektreat = factor(paste(week_mm,treatments_mm, sep=""))
+weektreat
+```
+
+```{r}
+design = model.matrix(~0+weektreat)
+design
+```
+
+
+```{r}
+colnames(design) = levels(weektreat)
+design
+```
+
+### What if we let LIMMA and edgeR select our low expressed genes for us?
+### how would that be different than the genesum cutoff we chose of 45?
+```{r}
+dge = DGEList(counts = GSE124161_readcount)
+dim(dge$counts) #before filtering
+
+keep = filterByExpr(dge, design)
+dge = dge[keep,,keep.lib.sizes=FALSE]
+
+dim(dge$counts) #after filtering there are 20,935 genes, this is a lot stricter than the 25,995 genes we kept by filtering using genesum which was arbitrary and selected by judgement.
+```
+
+```{r}
+genesum_filt_limma = rowSums(dge$counts)
+hist(log2(genesum_filt_limma+1), ylim = c(0,4000), xlim = c(0,30), breaks = 25)
+```
+
+
+### Merge of plots "Low Counts Trimmed Data: Mannual vs Limma"
+```{r}
+histfilt <- hist(log2(genesum_filt+1), ylim = c(0,4000), xlim = c(0,30), breaks = 25)
+histlimma <-hist(log2(genesum_filt_limma+1), ylim = c(0,4000), xlim = c(0,30), breaks = 25)
+plot(histfilt, ylim = c(0,4000), xlim = c(0,30), col= rgb(blue = 1, green=0, red=0, alpha = 1), main="Low Counts Trimmed Data: Manual vs Limma")
+plot(histlimma, ylim = c(0,4000), xlim = c(0,30), col=rgb(red = 1, blue=0, green=0, alpha = 0.5), add = TRUE) #note red is transparent and data is common to all "blue" so limma dataset presents as purple.
+```
+
+
+### Create a PCA plot, after low expressed genes are filtered out
+```{r}
+library(dplyr)
+
+data_prcomp = prcomp(t(dge$counts), scale=TRUE, center=TRUE)
+
+library(ggplot2)
+
+coords2draw = as.data.frame(data_prcomp$x)
+
+ggplot(coords2draw) +
+  geom_point(mapping=aes(x = PC1, y= PC2,
+                         col = week_mm, shape = treatments_mm)) + 
+  labs(title = "PCA Plot: dge$counts filtByExpr = 20,935 DEG's")
+```
+
+Now that we created a matrix that defines the various experimental categories of the samples, now we want to normalize the data.
+We need to normalize the data first before making the comparisons, as the normalized data is needed to proceed in next steps.
+
+### Voom normalization 
+
+Voom provides data in a format that can be used for standard limma methods. In the Limma manual, another normalization process is called "eset", which is normalization through the AFFY package, however we are normalizing this data with "voom", so "v" is the object we are storing the normalized data in.
+
+Voom is the normalization method that allows us to use the data in downstream analyses.
+For this expression, voom is acting on the 20,935 genes captured in "dge", using the design outlined 
+```{r}
+v = voom(dge, design, plot=TRUE, normalize="quantile")
+
+```
+
+
+### Then create the lmfit ( this calculates the "within" variance). This fits a linear model to the data.
+```{r}
+nfit = lmFit(v,design)
+```
+
+### Now specifically compare the different coefficients for the comparison
+This gives us a lot more control to make the specific comparisons we want. This gives us a lot of control over a complex data set, one with a lot of levels, time-series data.
+
+```{r}
+newcontrasts = makeContrasts(Zw1EGCG_vs_Zw1_placebo = W1EGCG - W1Placebo,#these are comparing the Treatment to the control at a single time point
+                             Zw2EGCG_vs_Zw2_placebo = W2EGCG - W2Placebo,
+                             Dw1_EGCG_vs_Dw1_placebo = W3EGCG - W3Placebo,
+                             Dw2_EGCG_vs_Dw2_placebo  = W4EGCG - W4Placebo,
+                             Dw3_EGCG_vs_Dw3_placebo  = W5EGCG - W5Placebo,
+                             Dw4_EGCG_vs_Dw4_placebo  = W6EGCG - W6Placebo,
+                             Dw6_EGCG_vs_Dw6_placebo  = W8EGCG - W8Placebo,
+                             interact = (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo), #Change in expression levels from Zonal week1 to wk2 differs between the ECGC-treated group and the placebo-treated group. If statistically significant, it would suggest that the change in expression levels over time (from week1 --> week 2) differs between the EGCG-treated group and the placebo-treated group.
+                             interact2 = (W1EGCG - W1Placebo) - (W3EGCG - W3Placebo), #Change in expression levels for Zonal wk 1 to Direct wk 1. If statistically significant, it would suggest that the change in expression levels over time (from week1 --> week 2) differs between the EGCG-treated group and the placebo-treated group.
+                             interact3 = (W2EGCG - W2Placebo) - (W4EGCG - W4Placebo), #Change in Expression levels for Zonal wk 2 and Direct wk 2
+                             interact4 = W2EGCG - W1EGCG - W2Placebo + W1Placebo, # EGCG vs Placebo, Significant means that EGCG is having a statistically differential response between the two time points W1-W2
+                             interact5 = W1EGCG + W1Placebo - W2EGCG - W2Placebo,  #Global gene expression of week 1 vs week 2
+                             levels = weektreat)
+```
+
+```{r}
+newcontrasts
+```
+
+### Fit the data to new contrasts and then calculate the p-value for each gene.
+
+```{r}
+nfit2= contrasts.fit(nfit, newcontrasts)
+nfit2 = eBayes(nfit2)
+topTable(nfit2,  adjust="BH") #BH = one of the multiple hypothesis testing methods we talked about the FDR correction.
+```
+
+### Coeff = INTERACT
+### get details of specific coeff defined in the contrast. Selected contrast "interact"
+topTable() is a function in limma which summarizes the results of the linear model, perform hypothesis tests, and adjust the p-values for multiple testing.Results include (log2) fold changes, standard errors, t-statistics and p-values. A number of summary statistics are presented by topTable() for the top genes and the selected contrast "interact".
+```{r}
+topTable(nfit2, coef = "interact",  adjust="BH") #we want to specify a specific coefficient, we can look at the Treatment effect EGCG "vs" the Placebo in the interaction of week 1 and 2 Zonal Treatment
+```
+
+```{r}
+Top_10_genes <-as.data.frame(rownames(topTable(nfit2, coef = "interact",  adjust="BH")))
+Top_10_genes
+colnames(Top_10_genes) <-c("GeneIDs")
+
+#adding Gene SYMBOL
+library("AnnotationDbi")
+library(org.Hs.eg.db)
+Top_10_genes$GeneSymbol = mapIds(org.Hs.eg.db,
+                    keys=rownames(topTable(nfit2, coef = "interact",  adjust="BH")), #Column containing Ensembl gene ids
+                    column="SYMBOL",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+Top_10_genes
+top_table <-as.data.frame(topTable(nfit2, coef = "interact",  adjust="BH"))
+top_table
+Top_10_genes$logFC<-top_table$logFC
+Top_10_genes$adj.p.val <-top_table$adj.P.Val
+Top_10_genes
+```
+
+### Make a volcano plot of this data
+
+```{r}
+volcanoplot(nfit2, "interact", highlight = 10, main="Zonal 'interaction' Treatment Across Week1-Week2")#The highlight=10 highlights the top 10, but gives the rownames... Changing to Ensembl gene name truncates the name, so it is not useful. However, we can capture the row name and get the gene name, but why bother, as the names are already in the top10 gene list above from the toptable() function. So see above, we made a fancy table with the gene SYMBOL line 351 ^)
+```
+
+
+Where are the normalized values from the Zoom normalization for all of the comparisons made in the dataset.
+### Normalized values are stored in v$E
+
+```{r}
+normexpvalues = v$E
+dim(normexpvalues)
+head(normexpvalues)
+```
+
+### Get the genes that have adjpvalue < 0.2 and absolute log2fc > 1.5
+Because the 0.05 p-value produced **no** gene candidates for downstream processing, the p-value was selected for 0.2, providing enough of a gene set for downstream cluster analysis and heat map generation.
+
+This uses the coefficient "interact" of the following interaction of week 1 vs week 2, which is Zonal treatment: interact = (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo)
+
+```{r}
+interact_sig = topTable(nfit2, 
+                coef = "interact",  
+                adjust="BH", #method used to adjust the p-values for multiple testing. Options, in increasing conservatism, include                                 "none", "BH", "BY", "holm"
+                p.value=0.2, #cutoff value for adjusted p-values. Only genes with lower p-values are listed
+                number=10000, #max number of genes to list
+                sort.by = "P", #sort by p-value
+                lfc=log2(1.5)) #log fold change cutoff, the minimum absolute log2-fold-change required
+```
+
+### Get the voom values for these genes.
+
+```{r}
+interact_sig_normvalues = normexpvalues[rownames(interact_sig),]
+```
+
+
+
+### Calculate the distance using pairwise correlation of genes.
+### Use hclust to perform the clustering.
+### This is the interaction of (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo)
+```{r}
+interact_sig_dist = as.dist(1 - cor(t(interact_sig_normvalues))) #this is correlation, not euclidean ()
+interact_sig_hclust = hclust(interact_sig_dist,
+                             method="average")
+plot(interact_sig_hclust, main = "Interaction Zonal (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo)")
+```
+### Let's determing the ideal number of cluster by calculating the avg silhouette width at each cutting.
+```{r}
+library(cluster)
+
+avg_sil_widths = numeric()
+for ( i in 2:20) {
+  tempclust = cutree(interact_sig_hclust, k = i)
+  avg_sil_widths[i] = mean(silhouette(tempclust, interact_sig_dist)[,"sil_width"])
+
+}
+
+```
+
+### 4 looks promising. Let's go with 4 for now.
+
+```{r}
+plot(avg_sil_widths)
+abline(v=4, col="red")
+```
+### Create the groups. Notice the result is actually a vector of number and the gene names are the labels.
+```{r}
+interact_sig_hclust_4 = cutree(interact_sig_hclust, k=4)
+head(interact_sig_hclust_4)
+```
+### To get the gene names that are in the different groups, use the which command to find out which genes are in the different groups, but then use the names function to get the actual names.
+
+```{r}
+interact_sig_hclust_g1= normexpvalues[names(which(interact_sig_hclust_4==1)),]
+interact_sig_hclust_g2= normexpvalues[names(which(interact_sig_hclust_4==2)),]
+interact_sig_hclust_g3= normexpvalues[names(which(interact_sig_hclust_4==3)),]
+interact_sig_hclust_g4= normexpvalues[names(which(interact_sig_hclust_4==4)),]
+```
+
+### Create heatmap of each cluster group
+
+### Cluster#1
+
+Use "pheatmap" to draw cluster. "annot_col" defines how to create the legend. "scale" allows us to see the pattern for each gene. To make it easier to compare the different groups, I asked the columns not to be clustered "cluster_cols = F" , and to not show the gene names "show_rownames = F". 
+
+```{r}
+library(pheatmap)
+
+annotation <-as.data.frame(cbind(pheno_df$week, pheno_df$treatments, pheno_df$application))
+colnames(annotation) <- c('week','treatment', 'application')
+rownames(annotation) <-pheno_df$count_colnames
+
+pheatmap(interact_sig_hclust_g1,annotation_col = annotation, scale="row", cluster_cols = F, show_rownames = F, main = "Zonal (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo) Cluster Group #1 (k=4)" )
+
+```
+
+
+### Perform Go-Term Enrichment analysis
+```{r}
+# Load the proper packages
+library(GOstats)
+library(GO.db)
+library(Category)
+library(org.Hs.eg.db)
+```
+
+
+### Go-Term Enrichment Part 1
+
+Create HyperGoparpam
+
+Converting the Ensemble to Entrez was achieved with this code:
+https://www.biostars.org/p/441386/
+
+```{r}
+library("AnnotationDbi")
+
+#adding ENTREZ ID's to global gene data file
+GSE124161_readcount$entrez = mapIds(org.Hs.eg.db,
+                    keys=rownames(GSE124161_readcount), #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+#Wrangling the ensemble gene ID's to Entrez in the interact_sig_hclust_g1  
+diffexpgenes_names_df <-rownames(as.data.frame(interact_sig_hclust_g1))
+diffexpgenes_names_df <-as.data.frame(diffexpgenes_names_df)
+
+diffexpgenes_names_df$entrez = mapIds(org.Hs.eg.db,
+                    keys= diffexpgenes_names_df$diffexpgenes_names_df, #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+
+diffexpgenes_names <-diffexpgenes_names_df$entrez
+readcount_names <-GSE124161_readcount$entrez
+
+#Utilized following resource for below code format https://bioconductor.org/packages/release/bioc/vignettes/GOstats/inst/doc/GOstatsHyperG.pdf
+
+params <- new("GOHyperGParams", 
+              geneIds = diffexpgenes_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored your differentially expressed gene names
+              universeGeneIds = readcount_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored all of the gene names from the whole unfiltered data set. Its the whole list of the "universe" of gene IDs for your array or reference genome.
+              annotation = "org.Hs.eg", 
+              ontology = "BP", 
+              pvalueCutoff=0.01, #don't use quotes here, it will not work, you will get an error message
+              testDirection = "over")
+
+hypGO <- hyperGTest(params)
+hypGO
+```
+
+### The summary function returns a data.frame summarizing the result. 
+
+By default, only the results for terms with a p-value less than the cutoff specified in the parameter instance will be shown.You can also set a minimum number of genes for each term using the "categorySize" argument. I chose a grouping of 10.
+
+```{r}
+sumGo <- summary(hypGO, categorySize =10)
+sumGo
+```
+
+```{r}
+GoPlot <- data.frame(sumGo$GOBPID,sumGo$Pvalue,sumGo$Term)
+colnames(GoPlot) <-c("GO_ID_BP", "P-value", "Term")
+GoPlot
+```
+### KEGG ENRIGHMENT Part1
+
+```{r}
+#install Libraries needed for KEGG Enrichment Analysis
+library(clusterProfiler)
+library(pathview)
+library(gage)
+library(gageData)
+
+#Now perform KEGG ENRICHMENT 
+
+keggEnrich <- enrichKEGG(
+  diffexpgenes_names_df$entrez,
+  organism = "hsa",
+  keyType = "kegg",
+  qvalueCutoff = 0.45,
+  pvalueCutoff = 1, #adjust this if you are not seeing any results
+  pAdjustMethod = "BH",
+  )
+```
+
+
+```{r}
+#Show results from enrichKEGG
+head(keggEnrich)
+keggEnrich
+```
+
+
+```{r}
+#Generate a graph for the two KEGG results
+#Edit the pathway id to that which is appropriate based on the ID column from the enrichKEGG output
+
+#These will generate images that will be saved to the working directory or the downloads folder
+#Repeat for however many results you get from keggEnrich
+
+pv.out_htmp1a <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa04141", species = "hsa")
+#Repeat for the second result
+#pv.out_htmp1b <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa00000", species = "hsa")
+```
+
+```{r}
+#Also show the genes involved in the pathway
+#These correspond to the elements included in the image of the KEGG pathway generated earlier
+pv.out_htmp1a$plot.data.gene
+#pv.out_htmp1b$plot.data.gene
+```
+
+### Cluster#2
+
+```{r}
+pheatmap(interact_sig_hclust_g2,annotation_col = annotation, scale="row", cluster_cols = F, show_rownames = F, main = "Zonal (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo) Cluster Group #2 (k=4)" )
+```
+
+### Go-Term Enrichment Part 2
+
+Create HyperGoparpam
+
+Converting the Ensemble to Entrez was achieved with this code:
+https://www.biostars.org/p/441386/
+
+```{r}
+library("AnnotationDbi")
+
+#adding ENTREZ ID's to global gene data file
+GSE124161_readcount$entrez = mapIds(org.Hs.eg.db,
+                    keys=rownames(GSE124161_readcount), #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+#Wrangling the ensemble gene ID's to Entrez in the interact_sig_hclust_g2  
+diffexpgenes_names_df <-rownames(as.data.frame(interact_sig_hclust_g2))
+diffexpgenes_names_df <-as.data.frame(diffexpgenes_names_df)
+
+diffexpgenes_names_df$entrez = mapIds(org.Hs.eg.db,
+                    keys= diffexpgenes_names_df$diffexpgenes_names_df, #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+
+diffexpgenes_names <-diffexpgenes_names_df$entrez
+readcount_names <-GSE124161_readcount$entrez
+
+#Utilized following resource for below code format https://bioconductor.org/packages/release/bioc/vignettes/GOstats/inst/doc/GOstatsHyperG.pdf
+
+params <- new("GOHyperGParams", 
+              geneIds = diffexpgenes_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored your differentially expressed gene names
+              universeGeneIds = readcount_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored all of the gene names from the whole unfiltered data set. Its the whole list of the "universe" of gene IDs for your array or reference genome.
+              annotation = "org.Hs.eg", 
+              ontology = "BP", 
+              pvalueCutoff=0.01, #don't use quotes here, it will not work, you will get an error message
+              testDirection = "over")
+
+hypGO <- hyperGTest(params)
+hypGO
+```
+
+```{r}
+sumGo <- summary(hypGO, categorySize =10)
+sumGo
+```
+
+```{r}
+GoPlot <- data.frame(sumGo$GOBPID,sumGo$Pvalue,sumGo$Term)
+colnames(GoPlot) <-c("GO_ID_BP", "P-value", "Term")
+GoPlot
+```
+
+### KEGG ENRIGHMENT Part2
+
+```{r}
+
+#Now perform KEGG ENRICHMENT 
+
+keggEnrich <- enrichKEGG(
+  diffexpgenes_names_df$entrez,
+  organism = "hsa",
+  keyType = "kegg",
+  pvalueCutoff = 0.05, #adjust this if you are not seeing any results
+  pAdjustMethod = "BH",
+  )
+```
+
+
+```{r}
+#Show results from enrichKEGG
+head(keggEnrich)
+keggEnrich
+```
+
+
+```{r}
+#Generate a graph for the two hsa00565 and hsa00480 KEGG results
+#Edit the pathway id to that which is appropriate based on the ID column from the enrichKEGG output
+
+#These will generate images that will be saved to the working directory or the downloads folder
+#Repeat for however many results you get from keggEnrich
+
+pv.out_htmp2a <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa00565", species = "hsa")
+#Repeat for the second result
+pv.out_htmp2b <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa00480", species = "hsa")
+```
+
+```{r}
+#Also show the genes involved in the pathway
+#These correspond to the elements included in the image of the KEGG pathway generated earlier
+pv.out_htmp2a$plot.data.gene
+pv.out_htmp2b$plot.data.gene
+```
+
+### Cluster#3
+
+```{r}
+pheatmap(interact_sig_hclust_g3,annotation_col = annotation, scale="row", cluster_cols = F, show_rownames = F, main = "Zonal (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo) Cluster Group #3 (k=4)" )
+```
+### Go-Term Enrichment Part 3
+
+Create HyperGoparpam
+
+Converting the Ensemble to Entrez was achieved with this code:
+https://www.biostars.org/p/441386/
+
+```{r}
+library("AnnotationDbi")
+
+#adding ENTREZ ID's to global gene data file
+GSE124161_readcount$entrez = mapIds(org.Hs.eg.db,
+                    keys=rownames(GSE124161_readcount), #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+#Wrangling the ensemble gene ID's to Entrez in the interact_sig_hclust_g3  
+diffexpgenes_names_df <-rownames(as.data.frame(interact_sig_hclust_g3))
+diffexpgenes_names_df <-as.data.frame(diffexpgenes_names_df)
+
+diffexpgenes_names_df$entrez = mapIds(org.Hs.eg.db,
+                    keys= diffexpgenes_names_df$diffexpgenes_names_df, #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+
+diffexpgenes_names <-diffexpgenes_names_df$entrez
+readcount_names <-GSE124161_readcount$entrez
+
+#Utilized following resource for below code format https://bioconductor.org/packages/release/bioc/vignettes/GOstats/inst/doc/GOstatsHyperG.pdf
+
+params <- new("GOHyperGParams", 
+              geneIds = diffexpgenes_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored your differentially expressed gene names
+              universeGeneIds = readcount_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored all of the gene names from the whole unfiltered data set. Its the whole list of the "universe" of gene IDs for your array or reference genome.
+              annotation = "org.Hs.eg", 
+              ontology = "BP", 
+              pvalueCutoff=0.01, #don't use quotes here, it will not work, you will get an error message
+              testDirection = "over")
+
+hypGO <- hyperGTest(params)
+hypGO
+```
+
+```{r}
+sumGo <- summary(hypGO, categorySize =10)
+sumGo
+```
+
+```{r}
+GoPlot <- data.frame(sumGo$GOBPID,sumGo$Pvalue,sumGo$Term)
+colnames(GoPlot) <-c("GO_ID_BP", "P-value", "Term")
+GoPlot
+```
+
+### KEGG ENRIGHMENT Part3
+
+```{r}
+
+#Now perform KEGG ENRICHMENT 
+
+keggEnrich <- enrichKEGG(
+  diffexpgenes_names_df$entrez,
+  organism = "hsa",
+  keyType = "kegg",
+  pvalueCutoff = 0.2, #adjust this if you are not seeing any results
+  pAdjustMethod = "BH",
+  )
+```
+
+
+```{r}
+#Show results from enrichKEGG
+head(keggEnrich)
+keggEnrich
+```
+
+
+```{r}
+#Generate a graph for the two KEGG results
+#Edit the pathway id to that which is appropriate based on the ID column from the enrichKEGG output
+
+#These will generate images that will be saved to the working directory or the downloads folder
+#Repeat for however many results you get from keggEnrich
+
+pv.out_htmp3a <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa04810", species = "hsa")
+#Repeat for the second result
+pv.out_htmp3b <- pathview(gene.data = diffexpgenes_names_df$entrez, pathway.id = "hsa04144", species = "hsa")
+```
+
+```{r}
+#Also show the genes involved in the pathway
+#These correspond to the elements included in the image of the KEGG pathway generated earlier
+pv.out_htmp3a$plot.data.gene
+pv.out_htmp3b$plot.data.gene
+```
+
+### Cluster#4
+
+```{r}
+pheatmap(interact_sig_hclust_g4,annotation_col = annotation, scale="row", cluster_cols = F, show_rownames = F, main = "Zonal (W1EGCG - W1Placebo) - (W2EGCG - W2Placebo) Cluster Group #4 (k=4)" )
+```
+
+
+### Go-Term Enrichment Part 4
+
+Create HyperGoparpam
+
+Converting the Ensemble to Entrez was achieved with this code:
+https://www.biostars.org/p/441386/
+
+```{r}
+library("AnnotationDbi")
+
+#adding ENTREZ ID's to global gene data file
+GSE124161_readcount$entrez = mapIds(org.Hs.eg.db,
+                    keys=rownames(GSE124161_readcount), #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+#Wrangling the ensemble gene ID's to Entrez in the interact_sig_hclust_g4  
+diffexpgenes_names_df <-rownames(as.data.frame(interact_sig_hclust_g4))
+diffexpgenes_names_df <-as.data.frame(diffexpgenes_names_df)
+
+diffexpgenes_names_df$entrez = mapIds(org.Hs.eg.db,
+                    keys= diffexpgenes_names_df$diffexpgenes_names_df, #Column containing Ensembl gene ids
+                    column="ENTREZID",
+                    keytype="ENSEMBL",
+                    multiVals="first") #This selects the first gene alias, if there are multiple gene names under the single EntrezID
+
+
+diffexpgenes_names <-diffexpgenes_names_df$entrez
+readcount_names <-GSE124161_readcount$entrez
+
+#Utilized following resource for below code format https://bioconductor.org/packages/release/bioc/vignettes/GOstats/inst/doc/GOstatsHyperG.pdf
+
+params <- new("GOHyperGParams", 
+              geneIds = diffexpgenes_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored your differentially expressed gene names
+              universeGeneIds = readcount_names, #don't use quotes here, it will not work, you will get an error message. This is the variable name where you stored all of the gene names from the whole unfiltered data set. Its the whole list of the "universe" of gene IDs for your array or reference genome.
+              annotation = "org.Hs.eg", 
+              ontology = "BP", 
+              pvalueCutoff=0.01, #don't use quotes here, it will not work, you will get an error message
+              testDirection = "over")
+
+hypGO <- hyperGTest(params)
+hypGO
+```
+
+
+```{r}
+sumGo <- summary(hypGO, categorySize =10)
+sumGo
+```
+
+```{r}
+GoPlot <- data.frame(sumGo$GOBPID,sumGo$Pvalue,sumGo$Term)
+colnames(GoPlot) <-c("GO_ID_BP", "P-value", "Term")
+GoPlot
+```
+
+### KEGG ENRIGHMENT Part4
+
+```{r}
+
+#Now perform KEGG ENRICHMENT 
+
+keggEnrich <- enrichKEGG(
+  diffexpgenes_names_df$entrez,
+  organism = "hsa",
+  keyType = "kegg",
+  pvalueCutoff = 0.1, #adjust this if you are not seeing any results
+  pAdjustMethod = "BH",
+  )
+```
+
+
+```{r}
+#Show results from enrichKEGG
+head(keggEnrich)
+keggEnrich
+```
+
+
+```{r}
+#Generate a graph for the two KEGG results
+#Edit the pathway id to that which is appropriate based on the ID column from the enrichKEGG output
+
+#These will generate images that will be saved to the working directory or the downloads folder
+#Repeat for however many results you get from keggEnrich
+
+pv.out_htmp4a <- pathview(gene.data = diffexpgenes_names_df$entrez, gene.idtype = "KEGG", pathway.id = "hsa05219", species = "hsa")
+#Repeat for the second result
+pv.out_htmp4b <- pathview(gene.data = diffexpgenes_names_df$entrez, gene.idtype = "KEGG", pathway.id = "hsa05213", species = "hsa")
+```
+
+```{r}
+#Also show the genes involved in the pathway
+#These correspond to the elements included in the image of the KEGG pathway generated earlier
+pv.out_htmp4a$plot.data.gene
+pv.out_htmp4b$plot.data.gene
+```
+
+
+
+
